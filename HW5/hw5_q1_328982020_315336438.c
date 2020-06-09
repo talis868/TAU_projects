@@ -197,10 +197,6 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 
 		free(component_name);
 	}
-	//current->next = NULL;
-	char search_term[NAME_LENGTH] = "Modem";
-	int index = search_and_return_index(search_term, head_hw_component);
-	HW_component** found = return_pointer(index, head_hw_component);
 }
 
 void insert_new_component(HW_component **head_hw_component, HW_component *new_component)
@@ -351,7 +347,7 @@ void update_component(HW_component **head_hw_component, char *name, char *copies
 	int index = search_and_return_index(name, head_hw_component), copies = atoi(copies_str);
 
 	if (index == -1)
-	{
+	{  // TODO: check this segment with different data
 		HW_component *new_component = init_new_component(name, copies);
 		insert_new_component(head_hw_component, new_component);
 	}
