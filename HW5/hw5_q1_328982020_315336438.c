@@ -30,18 +30,19 @@ typedef struct hw_component
 
 void check_open_file(FILE *file, char *path, char *file_name);
 
-void read_actions(FILE *actions_file, FILE *components_file);
+void procedure_actions(FILE *actions_file, FILE *components_file);
 int parse_action_line(char *pline, char *action, char *param1, char *param2);
 
 void initialize(HW_component **head_hw_component, FILE *components_file);
-void insert_new_component(HW_component **curr_hw_component, HW_component *new_component);
+void insert_new_component(HW_component **head_hw_component, HW_component *new_component);
 void parse_components_line(char *pline, int *copies, char *components);
 int search_and_return_index(char search_term[NAME_LENGTH], HW_component **head_hw_component);
 HW_component** return_pointer(int index, HW_component **head_hw_component);
 void rename_component(char new_name[NAME_LENGTH], HW_component **component_to_change);
 void finalize(HW_component **head_hw_component);
 void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component);
-HW_component* init_new_component(char *name, int amount);
+HW_component* init_new_component(char *name, int copies);
+void update_component(HW_component **head_hw_component, char *name, char *copies_str);
 
 int main()
 {
@@ -53,7 +54,7 @@ int main()
 	check_open_file(actions_file, actions_path, "actions.txt");
 	check_open_file(components_file, components_path, "hw_components.txt");
 
-	read_actions(actions_file, components_file);
+	procedure_actions(actions_file, components_file);
 
 	fclose(actions_file);
 	fclose(components_file);
@@ -75,11 +76,11 @@ void check_open_file(FILE *file, char *path, char *file_name)
 	}
 }
 
-void read_actions(FILE *actions_file, FILE *components_file)
+void procedure_actions(FILE *actions_file, FILE *components_file)
 /**
  * Input: open files of the action and the components
  * return parameter: None
- * Function functionality:
+ * Function functionality: reads and runs an action per line in the file
  **/
 {
 	char line[ACTION_LINE_LENGTH + 1];
@@ -164,9 +165,9 @@ int parse_action_line(char *pline, char *action, char *param1, char *param2)
 
 void initialize(HW_component **head_hw_component, FILE *components_file)
 /**
- * Input:
+ * Input: empty head for linked list and the open components file to be read
  * return parameter: None
- * Function functionality:
+ * Function functionality: creates a sorted linked list from the hardware in the file
  **/
 {
 	char line[COMPONENT_LINE_LENGTH], *component_name = (char*)malloc(sizeof(char)*NAME_LENGTH);
@@ -200,6 +201,11 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 }
 
 void insert_new_component(HW_component **head_hw_component, HW_component *new_component)
+/**
+ * Input: head of lined components list and the new component to be added
+ * return parameter: None
+ * Function functionality: search and find the right place to enter a new component in alphabetic order 
+ **/
 {
 	if ((*head_hw_component)->next == NULL)
 	{
@@ -243,6 +249,11 @@ void insert_new_component(HW_component **head_hw_component, HW_component *new_co
 }
 
 void parse_components_line(char *pline, int *copies, char *component)
+/**
+ * Input: line from hw_components.txt and pointers to strings
+ * return parameter: None
+ * Function functionality: retrieves component name and the number of copies
+ **/
 {
 	int line_ix = 0, sub_ix = 0;
 	char *p_current_sub = component, string_copies[10];
@@ -308,9 +319,9 @@ void finalize(HW_component **head_hw_component)
 
 void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component)
 /**
- * Input:
+ * Input: action name, the first string is the name of the component and the second is either a name or number of copies
  * return parameter: None
- * Function functionality:
+ * Function functionality: Calls supported functions
  **/
 {
 	if (strcmp(action, "Rename") == 0)
@@ -323,45 +334,40 @@ void call_action(char *action, char *param1, char *param2, HW_component **head_h
 	}
 	if (strcmp(action, "Returned_from_customer") == 0 || strcmp(action, "Production") == 0)
 	{
-		int index = search_and_return_index(param1, head_hw_component), copies = atoi(param2);
-
-		if (index == -1)
-		{
-			HW_component *new_component = init_new_component(param1, copies);
-			insert_new_component(head_hw_component, new_component);
-		}
-		else
-		{
-			HW_component **returned_hardware = return_pointer(index, head_hw_component);
-			(*returned_hardware)->copies = (*returned_hardware)->copies + copies;
-		}
+		update_component(head_hw_component, param1, param2);
 	}
+}
 
+void update_component(HW_component **head_hw_component, char *name, char *copies_str)
+/**
+ * Input: head component in linked list, the name of the component to change and the copies to be updated
+ * return parameter: None
+ * Function functionality: Updates copies number or add a new component if one does not exist
+ **/
+{
+	int index = search_and_return_index(name, head_hw_component), copies = atoi(copies_str);
 
-	// TODO: add switch case and call the functions according to the text ("fire", "production" etc.)
+	if (index == -1)
+	{
+		HW_component *new_component = init_new_component(name, copies);
+		insert_new_component(head_hw_component, new_component);
+	}
+	else
+	{
+		HW_component **returned_hardware = return_pointer(index, head_hw_component);
+		(*returned_hardware)->copies = (*returned_hardware)->copies + copies;
+	}
 }
 
 HW_component* init_new_component(char *name, int copies)
+/**
+ * Input: component name and number of copies
+ * return parameter: new allocated hw component
+ * Function functionality: Allocates a space for a new component and fills the params
+ **/
 {
 	HW_component* new_component = (HW_component*)malloc(sizeof(HW_component));
 	strcpy(new_component->name, name);
 	new_component->copies = copies;
 	return new_component;
 }
-
-
-/***
- * Initialize
-Returned_from_customer $$$ Hub ultra $$$ 12
-Fire $$$ Hub $$$ 13
-Returned_from_customer $$$ Modem $$$ 12
-Production $$$ Nic $$$ 2
-Fire $$$ Router promore 10000GG $$$ 1
-Rename $$$ Router pro 100GG $$$ Router pro112 10000GG
-Returned_from_customer $$$ Hub pro $$$ 5
-Production $$$ Nic pro 2000GG $$$ 8
-Fatal_malfunction $$$ Nic 100GG $$$ 7
-Production $$$ Nic pro 2000GG $$$ 8000
-Returned_from_customer $$$ Hub ultraZZZZZ $$$ 12
-Finalize
- */
