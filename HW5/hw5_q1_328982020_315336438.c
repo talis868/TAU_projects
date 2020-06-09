@@ -31,24 +31,27 @@ typedef struct hw_component
 void check_open_file(FILE *file, char *path, char *file_name);
 
 void procedure_actions(FILE *actions_file, FILE *components_file);
+void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component);
 int parse_action_line(char *pline, char *action, char *param1, char *param2);
-
-void initialize(HW_component **head_hw_component, FILE *components_file);
-void insert_new_component(HW_component **head_hw_component, HW_component *new_component);
 void parse_components_line(char *pline, int *copies, char *components);
+
+// utils
+void insert_new_component(HW_component **head_hw_component, HW_component *new_component);
+HW_component* init_new_component(char *name, int copies);
 int search_and_return_index(char search_term[NAME_LENGTH], HW_component **head_hw_component);
 HW_component** return_pointer(int index, HW_component **head_hw_component);
+
+// supported actions
+void initialize(HW_component **head_hw_component, FILE *components_file);
 void rename_component(char new_name[NAME_LENGTH], HW_component **component_to_change);
 void finalize(HW_component **head_hw_component);
-void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component);
-HW_component* init_new_component(char *name, int copies);
 void update_component(HW_component **head_hw_component, char *name, char *copies_str);
 
 int main()
 {
-	char *actions_path = "C:\\Users\\maxg1\\OneDrive\\Documents\\University\\C\\Semester B\\ex5\\txt files\\actions.txt",
-		*components_path = "C:\\Users\\maxg1\\OneDrive\\Documents\\University\\C\\Semester B\\ex5\\txt files\\hw_components.txt",
-		*output_path = "C:\\Users\\maxg1\\OneDrive\\Documents\\University\\C\\Semester B\\ex5\\txt files\\components_updated.txt";  // TODO: turn to args from outside
+	char *actions_path = "C:\\Users\\talil\\OneDrive\\sem B\\C\\HW5\\txt files\\actions.txt",
+		*components_path = "C:\\Users\\talil\\OneDrive\\sem B\\C\\HW5\\txt files\\hw_components.txt",
+		*output_path = "C:\\Users\\talil\\OneDrive\\sem B\\C\\HW5\\txt files\\components_updated.txt";  // TODO: turn to args from outside
 	FILE *actions_file = fopen(actions_path, "r"), *components_file = fopen(components_path, "r");;
 
 	check_open_file(actions_file, actions_path, "actions.txt");
