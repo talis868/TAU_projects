@@ -68,9 +68,9 @@ int main()
 
 void check_open_file(FILE *file, char *path, char *file_name)
 /**
- * Input:
+ * Input: open file in read mode
  * return parameter: None
- * Function functionality:
+ * Function functionality: checks if the file was opened successfully
  **/
 {
 	if (file == NULL)
