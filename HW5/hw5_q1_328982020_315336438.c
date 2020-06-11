@@ -8,7 +8,6 @@
 #define ACTION_LENGTH 22
 #define COMPONENT_LINE_LENGTH 214  //  200+4+10
 
-
 #define GENERAL 2
 #define INITIALIZE 3
 #define FINALIZE 4
@@ -68,6 +67,7 @@ int main(int argc, char* argv[])
 		fclose(actions_file);
 		fclose(components_file);
 		fclose(output_file);
+		
 		return 0;
 	}
 	else
@@ -75,9 +75,6 @@ int main(int argc, char* argv[])
 		printf("Error: invalid number of arguments (<%d> instead of 3)\n", argc - 1);
 		return 1;
 	}
-
-	// TODO: memory leaks check
-
 }
 
 void check_open_file(FILE *file, char *path, char *file_name)
@@ -89,7 +86,8 @@ void check_open_file(FILE *file, char *path, char *file_name)
 {
 	if (file == NULL)
 	{
-		printf("Error: opening %s failed\n", file_name);  // TODO: now what? exit?
+		printf("Error: opening %s failed\n", file_name);
+		exit(1);
 	}
 }
 
@@ -271,7 +269,7 @@ void insert_new_component(HW_component **head_hw_component, HW_component *new_co
 			new_component->next = temp_head;
 			new_component->next->next = NULL;
 		}
-		else  // B, A TODO: check what if the string are equal!
+		else
 		{
 			new_component->next = NULL;
 			(*head_hw_component)->next = new_component;
