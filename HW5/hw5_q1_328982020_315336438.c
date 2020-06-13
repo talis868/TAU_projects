@@ -16,6 +16,9 @@
 #define EOL '\n'
 #define EOS '\0'
 
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -27,24 +30,22 @@ typedef struct hw_component
 	struct hw_component *next;
 } HW_component;
 
-void check_open_file(FILE *file, char *path, char *file_name);
-
-void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_file);
-void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component);
+void procedure_actions(FILE *actions_file, char *components_path, char *output_path);
+void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component, FILE *actions_file);
 int parse_action_line(char *pline, char *action, char *param1, char *param2);
 void parse_components_line(char *pline, int *copies, char *components);
 
 // utils
 void insert_new_component(HW_component **head_hw_component, HW_component *new_component);
-HW_component* init_new_component(char *name, int copies, HW_component **head_hw_component);
+HW_component* init_new_component(char *name, int copies);
 int search_component_index(char search_term[NAME_LENGTH], HW_component **head_hw_component);
 HW_component** return_pointer_from_component_index(int index, HW_component **head_hw_component);
 void free_linked_list(HW_component **head_hw_component);
 
 // supported actions
-void initialize(HW_component **head_hw_component, FILE *components_file);
+void initialize(HW_component **head_hw_component, FILE *components_file, FILE *actions_file);
 void rename_component(char* name, char* new_name, HW_component **head_hw_component);
-void update_component(HW_component **head_hw_component, char *name, char *copies_str);
+void update_component(HW_component **head_hw_component, char *name, char *copies_str, FILE *actions_file);
 void remove_copies_of_component(char* name, char* copies_str, HW_component **head_hw_component);
 void finalize(HW_component **head_hw_component, FILE *output_file);
 
@@ -56,18 +57,18 @@ int main(int argc, char* argv[])
 		char *components_path = argv[1],
 			*actions_path = argv[2],
 			*output_path = argv[3];
-		FILE *actions_file = fopen(actions_path, "r"), *components_file = fopen(components_path, "r"), *output_file = fopen(output_path, "w");
+		FILE *actions_file = fopen(actions_path, "r");
+		if (actions_file == NULL)
+		{
+			printf("Error: opening %s failed\n", "actions.txt");
+			printf("%d", _CrtDumpMemoryLeaks());
+			exit(1);
+		}
 
-		check_open_file(actions_file, actions_path, "actions.txt");
-		check_open_file(components_file, components_path, "hw_components.txt");
-		check_open_file(output_file, output_path, "updated_components.txt");
-
-		procedure_actions(actions_file, components_file, output_file);
+		procedure_actions(actions_file, components_path, output_path);
 
 		fclose(actions_file);
-		fclose(components_file);
-		fclose(output_file);
-		
+		printf("END OF MAIN: %d", _CrtDumpMemoryLeaks());
 		return 0;
 	}
 	else
@@ -77,21 +78,7 @@ int main(int argc, char* argv[])
 	}
 }
 
-void check_open_file(FILE *file, char *path, char *file_name)
-/**
- * Input: Open file in read mode
- * return parameter: None
- * Function functionality: Checks if the file was opened successfully
- **/
-{
-	if (file == NULL)
-	{
-		printf("Error: opening %s failed\n", file_name);
-		exit(1);
-	}
-}
-
-void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_file)
+void procedure_actions(FILE *actions_file, char *components_path, char *output_path)
 /**
  * Input: Open files of the action and the components
  * return parameter: None
@@ -100,7 +87,7 @@ void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_f
 {
 	char line[ACTION_LINE_LENGTH + 1], *action = NULL, *param1 = NULL, *param2 = NULL;
 	int is_initialized = FALSE;
-	HW_component *head_hw_component;
+	HW_component *head_hw_component = NULL;
 
 	while (fgets(line, ACTION_LINE_LENGTH + 1, actions_file) != NULL)
 	{
@@ -108,8 +95,9 @@ void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_f
 		if (action == NULL)
 		{
 			printf("Error: memory allocation failed\n");
-			if (is_initialized)
-				free_linked_list(&head_hw_component);
+			free_linked_list(&head_hw_component);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
 			exit(1);
 		}
 		param1 = (char*)malloc(sizeof(char)*NAME_LENGTH + 1);
@@ -117,8 +105,9 @@ void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_f
 		{
 			printf("Error: memory allocation failed\n");
 			free(action);
-			if (is_initialized)
-				free_linked_list(&head_hw_component);
+			free_linked_list(&head_hw_component);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
 			exit(1);
 		}
 		param2 = (char*)malloc(sizeof(char)*NAME_LENGTH + 1);
@@ -127,8 +116,9 @@ void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_f
 			printf("Error: memory allocation failed\n");
 			free(action);
 			free(param1);
-			if (is_initialized)
-				free_linked_list(&head_hw_component);
+			free_linked_list(&head_hw_component);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
 			exit(1);
 		}
 		
@@ -138,18 +128,40 @@ void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_f
 		{
 			case INITIALIZE:
 			{
-				initialize(&head_hw_component, components_file);
-				is_initialized = TRUE;
+				FILE *components_file = fopen(components_path, "r");
+				if (components_file == NULL)
+				{
+					printf("Error: opening %s failed\n", "hw_components.txt");
+					fclose(actions_file);
+					free(action);
+					free(param1);
+					free(param2);
+					exit(1);
+				}
+				initialize(&head_hw_component, components_file, actions_file);
+				fclose(components_file);
 				break;
 			}
 			case FINALIZE:
 			{
+				FILE *output_file = fopen(output_path, "w");
+				if (output_file == NULL)
+				{
+					printf("Error: opening %s failed\n", "updated_components.txt");
+					fclose(actions_file);
+					free_linked_list(&head_hw_component);
+					free(action);
+					free(param1);
+					free(param2);
+					exit(1);
+				}
 				finalize(&head_hw_component, output_file);
+				fclose(output_file);
 				break;
 			}
 			case GENERAL:
 			{
-				call_action(action, param1, param2, &head_hw_component);
+				call_action(action, param1, param2, &head_hw_component, actions_file);
 				break;
 			}
 		}
@@ -202,7 +214,7 @@ int parse_action_line(char *pline, char *action, char *param1, char *param2)
 	return GENERAL;
 }
 
-void initialize(HW_component **head_hw_component, FILE *components_file)
+void initialize(HW_component **head_hw_component, FILE *components_file, FILE *actions_file)
 /**
  * Input: Empty head for linked list and the open components file to be read
  * return parameter: None
@@ -216,10 +228,18 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 	if (component_name == NULL)
 	{
 		printf("Error: memory allocation failed\n");
+		fclose(components_file);
+		fclose(actions_file);
+		printf("%d", _CrtDumpMemoryLeaks());
 		exit(1);
 	}
 
 	fgets(line, COMPONENT_LINE_LENGTH + 1, components_file);
+	if (strchr(line, '$') == NULL)
+	{
+		free(component_name);
+		return;
+	}
 	parse_components_line(line, pcopies, component_name);
 
 	(*head_hw_component) = (HW_component*)malloc(sizeof(HW_component));  // This is the head
@@ -227,6 +247,9 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 	{
 		printf("Error: memory allocation failed\n");
 		free(component_name);
+		fclose(components_file);
+		fclose(actions_file);
+		printf("%d", _CrtDumpMemoryLeaks());
 		exit(1);
 	}
 	strcpy((*head_hw_component)->name, component_name);
@@ -242,11 +265,23 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 		{
 			printf("Error: memory allocation failed\n");
 			free_linked_list(head_hw_component);
+			fclose(components_file);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
 			exit(1);
 		}
 		parse_components_line(line, pcopies, component_name);
 
-		new_component = init_new_component(component_name, copies, head_hw_component);
+		new_component = init_new_component(component_name, copies);
+		if (new_component == NULL)
+		{
+			printf("Error: memory allocation failed\n");
+			free_linked_list(head_hw_component);
+			fclose(components_file);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
+			exit(1);
+		}
 		insert_new_component(head_hw_component, new_component);
 
 		free(component_name);
@@ -260,6 +295,13 @@ void insert_new_component(HW_component **head_hw_component, HW_component *new_co
  * Function functionality: Search and find the right place to enter a new component in alphabetic order
  **/
 {
+	if (*head_hw_component == NULL)
+	{
+		*head_hw_component = new_component;
+		(*head_hw_component)->next = NULL;
+		return;
+	}
+	
 	if ((*head_hw_component)->next == NULL)
 	{
 		if (strcmp((*head_hw_component)->name, new_component->name) > 0)  // A, B
@@ -372,6 +414,10 @@ void finalize(HW_component **head_hw_component, FILE *output_file)
  * Function functionality: writes the linked list to the file and gets ready to end the program
  **/
 {
+	if (*head_hw_component == NULL)
+	{
+		return;
+	}
 	HW_component *curr_component = *head_hw_component;
 	while (curr_component->next != NULL)
 	{
@@ -382,7 +428,7 @@ void finalize(HW_component **head_hw_component, FILE *output_file)
 	free_linked_list(head_hw_component);
 }
 
-void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component)
+void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component, FILE *actions_file)
 /**
  * Input: Action name, the first string is the name of the component and the second is either a name or number of copies
  * return parameter: None
@@ -395,7 +441,7 @@ void call_action(char *action, char *param1, char *param2, HW_component **head_h
 	}
 	if (strcmp(action, "Returned_from_customer") == 0 || strcmp(action, "Production") == 0)
 	{
-		update_component(head_hw_component, param1, param2);
+		update_component(head_hw_component, param1, param2, actions_file);
 	}
 	if (strcmp(action, "Fatal_malfunction") == 0 || strcmp(action, "Fire") == 0)
 	{
@@ -434,18 +480,34 @@ void rename_component(char* name, char* new_name, HW_component **head_hw_compone
 	}
 }
 
-void update_component(HW_component **head_hw_component, char *name, char *copies_str)
+void update_component(HW_component **head_hw_component, char *name, char *copies_str, FILE *actions_file)
 /**
  * Input: head component in linked list, the name of the component to change and the copies to be updated
  * return parameter: None
  * Function functionality: Updates copies number or add a new component if one does not exist
  **/
 {
-	int index = search_component_index(name, head_hw_component), copies = atoi(copies_str);
+	int index, copies = atoi(copies_str);
+	
+	if (*head_hw_component == NULL)
+	{
+		index = -1;
+	}
+	else
+	{
+		index = search_component_index(name, head_hw_component);
+	}
 
 	if (index == -1)
 	{
-		HW_component *new_component = init_new_component(name, copies, head_hw_component);
+		HW_component *new_component = init_new_component(name, copies);
+		if (new_component == NULL)
+		{
+			free_linked_list(head_hw_component);
+			fclose(actions_file);
+			printf("%d", _CrtDumpMemoryLeaks());
+			exit(1);
+		}
 		insert_new_component(head_hw_component, new_component);
 	}
 	else
@@ -482,7 +544,7 @@ void remove_copies_of_component(char* name, char* copies_str, HW_component **hea
 	}
 }
 
-HW_component* init_new_component(char *name, int copies, HW_component **head_hw_component)
+HW_component* init_new_component(char *name, int copies)
 /**
  * Input: Component name and number of copies
  * return parameter: New allocated hw component
@@ -492,9 +554,7 @@ HW_component* init_new_component(char *name, int copies, HW_component **head_hw_
 	HW_component* new_component = (HW_component*)malloc(sizeof(HW_component));
 	if (new_component == NULL)
 	{
-		printf("Error: memory allocation failed\n");
-		free_linked_list(head_hw_component);
-		exit(1);
+		return NULL;
 	}
 	strcpy(new_component->name, name);
 	new_component->copies = copies;
