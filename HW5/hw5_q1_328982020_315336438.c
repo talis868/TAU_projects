@@ -8,7 +8,6 @@
 #define ACTION_LENGTH 22
 #define COMPONENT_LINE_LENGTH 214  //  200+4+10
 
-
 #define GENERAL 2
 #define INITIALIZE 3
 #define FINALIZE 4
@@ -30,23 +29,24 @@ typedef struct hw_component
 
 void check_open_file(FILE *file, char *path, char *file_name);
 
-void procedure_actions(FILE *actions_file, FILE *components_file);
+void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_file);
 void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component);
 int parse_action_line(char *pline, char *action, char *param1, char *param2);
 void parse_components_line(char *pline, int *copies, char *components);
 
 // utils
 void insert_new_component(HW_component **head_hw_component, HW_component *new_component);
-HW_component* init_new_component(char *name, int copies);
+HW_component* init_new_component(char *name, int copies, HW_component **head_hw_component);
 int search_component_index(char search_term[NAME_LENGTH], HW_component **head_hw_component);
 HW_component** return_pointer_from_component_index(int index, HW_component **head_hw_component);
+void free_linked_list(HW_component **head_hw_component);
 
 // supported actions
 void initialize(HW_component **head_hw_component, FILE *components_file);
 void rename_component(char* name, char* new_name, HW_component **head_hw_component);
 void update_component(HW_component **head_hw_component, char *name, char *copies_str);
 void remove_copies_of_component(char* name, char* copies_str, HW_component **head_hw_component);
-void finalize(HW_component **head_hw_component);
+void finalize(HW_component **head_hw_component, FILE *output_file);
 
 
 int main(int argc, char* argv[])
@@ -55,27 +55,26 @@ int main(int argc, char* argv[])
 	{
 		char *components_path = argv[1],
 			*actions_path = argv[2],
-			*output_path = argv[3];  // TODO: turn to args from outside
-		FILE *actions_file = fopen(actions_path, "r"), *components_file = fopen(components_path, "r");;
+			*output_path = argv[3];
+		FILE *actions_file = fopen(actions_path, "r"), *components_file = fopen(components_path, "r"), *output_file = fopen(output_path, "w");
 
 		check_open_file(actions_file, actions_path, "actions.txt");
 		check_open_file(components_file, components_path, "hw_components.txt");
+		check_open_file(output_file, output_path, "updated_components.txt");
 
-		procedure_actions(actions_file, components_file);
+		procedure_actions(actions_file, components_file, output_file);
 
 		fclose(actions_file);
 		fclose(components_file);
+		fclose(output_file);
+		
 		return 0;
 	}
 	else
 	{
-		int number_of_actual_arguments_recieved = argc - 1;
-		printf("Error: invalid number of arguments (<%d> instead of 3)\n", number_of_actual_arguments_recieved);
+		printf("Error: invalid number of arguments (<%d> instead of 3)\n", argc - 1);
 		return 1;
 	}
-
-	// TODO: memory leaks check
-
 }
 
 void check_open_file(FILE *file, char *path, char *file_name)
@@ -87,47 +86,72 @@ void check_open_file(FILE *file, char *path, char *file_name)
 {
 	if (file == NULL)
 	{
-		printf("Error: opening %s failed\n", file_name);  // TODO: now what? exit?
+		printf("Error: opening %s failed\n", file_name);
+		exit(1);
 	}
 }
 
-void procedure_actions(FILE *actions_file, FILE *components_file)
+void procedure_actions(FILE *actions_file, FILE *components_file, FILE *output_file)
 /**
  * Input: Open files of the action and the components
  * return parameter: None
  * Function functionality: Reads and runs an action per line in the file
  **/
 {
-	char line[ACTION_LINE_LENGTH + 1];
-	char *action = NULL;
-	char *param1 = NULL;
-	char *param2 = NULL;
+	char line[ACTION_LINE_LENGTH + 1], *action = NULL, *param1 = NULL, *param2 = NULL;
+	int is_initialized = FALSE;
 	HW_component *head_hw_component;
 
 	while (fgets(line, ACTION_LINE_LENGTH + 1, actions_file) != NULL)
 	{
 		action = (char*)malloc(sizeof(char)*ACTION_LENGTH + 1);
+		if (action == NULL)
+		{
+			printf("Error: memory allocation failed\n");
+			if (is_initialized)
+				free_linked_list(&head_hw_component);
+			exit(1);
+		}
 		param1 = (char*)malloc(sizeof(char)*NAME_LENGTH + 1);
+		if (param1 == NULL)
+		{
+			printf("Error: memory allocation failed\n");
+			free(action);
+			if (is_initialized)
+				free_linked_list(&head_hw_component);
+			exit(1);
+		}
 		param2 = (char*)malloc(sizeof(char)*NAME_LENGTH + 1);
+		if (param2 == NULL)
+		{
+			printf("Error: memory allocation failed\n");
+			free(action);
+			free(param1);
+			if (is_initialized)
+				free_linked_list(&head_hw_component);
+			exit(1);
+		}
+		
 		int op = parse_action_line(line, action, param1, param2);
 
 		switch (op)
 		{
-		case INITIALIZE:
-		{
-			initialize(&head_hw_component, components_file);
-			break;
-		}
-		case FINALIZE:
-		{
-			finalize(&head_hw_component);
-			break;
-		}
-		case GENERAL:
-		{
-			call_action(action, param1, param2, &head_hw_component);
-			break;
-		}
+			case INITIALIZE:
+			{
+				initialize(&head_hw_component, components_file);
+				is_initialized = TRUE;
+				break;
+			}
+			case FINALIZE:
+			{
+				finalize(&head_hw_component, output_file);
+				break;
+			}
+			case GENERAL:
+			{
+				call_action(action, param1, param2, &head_hw_component);
+				break;
+			}
 		}
 
 		free(action);
@@ -147,7 +171,7 @@ int parse_action_line(char *pline, char *action, char *param1, char *param2)
 	{
 		return INITIALIZE;
 	}
-	if (!strcmp(pline, "Finalize\n"))
+	if (!strcmp(pline, "Finalize"))
 	{
 		return FINALIZE;
 	}
@@ -189,10 +213,22 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 	int copies, *pcopies = &copies;
 	HW_component *new_component = NULL;
 
+	if (component_name == NULL)
+	{
+		printf("Error: memory allocation failed\n");
+		exit(1);
+	}
+
 	fgets(line, COMPONENT_LINE_LENGTH + 1, components_file);
 	parse_components_line(line, pcopies, component_name);
 
 	(*head_hw_component) = (HW_component*)malloc(sizeof(HW_component));  // This is the head
+	if ((*head_hw_component) == NULL)
+	{
+		printf("Error: memory allocation failed\n");
+		free(component_name);
+		exit(1);
+	}
 	strcpy((*head_hw_component)->name, component_name);
 	(*head_hw_component)->copies = copies;
 	(*head_hw_component)->next = NULL;
@@ -202,9 +238,15 @@ void initialize(HW_component **head_hw_component, FILE *components_file)
 	while (fgets(line, COMPONENT_LINE_LENGTH + 1, components_file) != NULL)
 	{
 		component_name = (char*)malloc(sizeof(char)*NAME_LENGTH);
+		if (component_name == NULL)
+		{
+			printf("Error: memory allocation failed\n");
+			free_linked_list(head_hw_component);
+			exit(1);
+		}
 		parse_components_line(line, pcopies, component_name);
 
-		new_component = init_new_component(component_name, copies);
+		new_component = init_new_component(component_name, copies, head_hw_component);
 		insert_new_component(head_hw_component, new_component);
 
 		free(component_name);
@@ -227,7 +269,7 @@ void insert_new_component(HW_component **head_hw_component, HW_component *new_co
 			new_component->next = temp_head;
 			new_component->next->next = NULL;
 		}
-		else  // B, A TODO: check what if the string are equal!
+		else
 		{
 			new_component->next = NULL;
 			(*head_hw_component)->next = new_component;
@@ -323,14 +365,21 @@ HW_component** return_pointer_from_component_index(int index, HW_component **hea
 	return pfound;
 }
 
-void finalize(HW_component **head_hw_component)
+void finalize(HW_component **head_hw_component, FILE *output_file)
 /**
- * Input:
+ * Input: head linked hardware components list, the open output file in write mode
  * return parameter: None
- * Function functionality:
+ * Function functionality: writes the linked list to the file and gets ready to end the program
  **/
 {
-
+	HW_component *curr_component = *head_hw_component;
+	while (curr_component->next != NULL)
+	{
+		fprintf(output_file, "%s $$$ %d\n", curr_component->name, curr_component->copies);
+		curr_component = curr_component->next;
+	}
+	fprintf(output_file, "%s $$$ %d", curr_component->name, curr_component->copies);
+	free_linked_list(head_hw_component);
 }
 
 void call_action(char *action, char *param1, char *param2, HW_component **head_hw_component)
@@ -342,9 +391,7 @@ void call_action(char *action, char *param1, char *param2, HW_component **head_h
 {
 	if (strcmp(action, "Rename") == 0)
 	{
-		{
-			rename_component(param1, param2, head_hw_component);
-		}
+		rename_component(param1, param2, head_hw_component);
 	}
 	if (strcmp(action, "Returned_from_customer") == 0 || strcmp(action, "Production") == 0)
 	{
@@ -397,8 +444,8 @@ void update_component(HW_component **head_hw_component, char *name, char *copies
 	int index = search_component_index(name, head_hw_component), copies = atoi(copies_str);
 
 	if (index == -1)
-	{  // TODO: check this segment with different data
-		HW_component *new_component = init_new_component(name, copies);
+	{
+		HW_component *new_component = init_new_component(name, copies, head_hw_component);
 		insert_new_component(head_hw_component, new_component);
 	}
 	else
@@ -435,9 +482,7 @@ void remove_copies_of_component(char* name, char* copies_str, HW_component **hea
 	}
 }
 
-
-
-HW_component* init_new_component(char *name, int copies)
+HW_component* init_new_component(char *name, int copies, HW_component **head_hw_component)
 /**
  * Input: Component name and number of copies
  * return parameter: New allocated hw component
@@ -445,7 +490,29 @@ HW_component* init_new_component(char *name, int copies)
  **/
 {
 	HW_component* new_component = (HW_component*)malloc(sizeof(HW_component));
+	if (new_component == NULL)
+	{
+		printf("Error: memory allocation failed\n");
+		free_linked_list(head_hw_component);
+		exit(1);
+	}
 	strcpy(new_component->name, name);
 	new_component->copies = copies;
 	return new_component;
+}
+
+void free_linked_list(HW_component **head_hw_component)
+/**
+ * Input: head node of the linked hardware components list
+ * return parameter: None
+ * Function functionality: frees all the nodes in the linked list
+ **/
+{
+	HW_component *temp = *head_hw_component;
+	while (*head_hw_component != NULL)
+	{
+		temp = *head_hw_component;
+		*head_hw_component = (*head_hw_component)->next;
+		free(temp);
+	}
 }
